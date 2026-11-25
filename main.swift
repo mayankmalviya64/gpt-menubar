@@ -1236,16 +1236,20 @@ final class AvatarView: NSView {
 /// (rounded square with a blue gradient and a white speech bubble), drawn in code so it's sharp at any size.
 /// (It used to be a floating button in the screen corner; the user moved it to the menu bar because
 /// a floating icon got in the way of full-screen videos.)
-/// `monochrome: true` draws a black rounded square with a white bubble, for the menu bar
-/// (the blue stood out too much next to the other menu bar icons).
+/// `monochrome: true` draws just the outline of the rounded square plus a filled bubble, in one colour,
+/// for the menu bar (the blue stood out too much next to the other menu bar icons).
 func messagesIcon(size: CGFloat, monochrome: Bool = false) -> NSImage {
     NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
-        let r = rect.insetBy(dx: size * 0.03, dy: size * 0.03)
-        // 1) Rounded square ("squircle"): plain black when monochrome, otherwise a light-to-deep blue gradient.
+        let border = size * 0.075   // outline thickness for the menu bar version
+        // Monochrome: pull the square in by half the outline so the line isn't cut off at the edges.
+        let r = rect.insetBy(dx: size * 0.03 + (monochrome ? border / 2 : 0),
+                             dy: size * 0.03 + (monochrome ? border / 2 : 0))
+        // 1) Rounded square ("squircle"): an empty outline when monochrome, otherwise a light-to-deep blue gradient.
         let tile = NSBezierPath(roundedRect: r, xRadius: r.width * 0.235, yRadius: r.width * 0.235)
         if monochrome {
-            NSColor.black.setFill()
-            tile.fill()
+            tile.lineWidth = border
+            NSColor.black.setStroke()   // the colour doesn't matter: macOS recolours "template" icons
+            tile.stroke()
         } else {
             let top = NSColor(srgbRed: 0.36, green: 0.70, blue: 1.00, alpha: 1)      // light blue
             let bottom = NSColor(srgbRed: 0.04, green: 0.42, blue: 0.98, alpha: 1)   // Messages blue
@@ -1264,7 +1268,7 @@ func messagesIcon(size: CGFloat, monochrome: Bool = false) -> NSImage {
                    controlPoint1: NSPoint(x: bubble.minX + w * 0.12, y: bubble.minY - h * 0.05),
                    controlPoint2: NSPoint(x: bubble.minX + w * 0.21, y: bubble.minY - h * 0.01))
         tail.close()
-        // Paint the bubble white on top of the square (black or blue).
+        // Fill the bubble: white on the blue icon; on the menu bar version any colour works (macOS recolours it).
         NSColor.white.setFill()
         NSBezierPath(ovalIn: bubble).fill()
         tail.fill()
@@ -1312,7 +1316,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         // Blue Messages-style icon (in colour, so it isn't turned black/white like template icons).
         let icon = messagesIcon(size: 18, monochrome: true)
-        icon.isTemplate = false  // keep our own black + white (a "template" icon would be recoloured to one colour)
+        icon.isTemplate = true   // "template" = macOS colours it white on a dark menu bar, black on a light one
         icon.accessibilityDescription = "ChatGPT"
         statusItem.button?.image = icon
         statusItem.button?.target = self

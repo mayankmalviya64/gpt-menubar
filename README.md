@@ -4,7 +4,7 @@ A small macOS menu bar app that keeps ChatGPT one shortcut away and can bring in
 reading or listening to. (Formerly called "ChatGPT Bar"; settings carry over automatically.)
 
 - **⌥Space** (or the menu bar icon) shows / hides a ChatGPT window, bottom-right by default.
-- **Menu bar icon**: a Messages-style speech-bubble icon, white bubble on a black rounded square. Click it (or press ⌥Space) to open the chat;
+- **Menu bar icon**: a Messages-style speech-bubble icon, white outlined square with a filled speech bubble, coloured like the other menu bar icons. Click it (or press ⌥Space) to open the chat;
   right-click it for the menu.
 - The chat always pops out of the **bottom-right corner** (like the Ask AI chat on the company overview pages)
   and sinks back into it when closed. Your window size is remembered.
