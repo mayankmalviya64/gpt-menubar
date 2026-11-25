@@ -91,16 +91,6 @@ enum Settings {
         get { UserDefaults.standard.object(forKey: "messagesLook") as? Bool ?? true }
         set { UserDefaults.standard.set(newValue, forKey: "messagesLook") }
     }
-    /// Where you dragged the launcher icon to (nil = default bottom-right corner).
-    static var launcherOrigin: NSPoint? {
-        get { (UserDefaults.standard.string(forKey: "launcherOrigin")).map { NSPointFromString($0) } }
-        set { UserDefaults.standard.set(newValue.map { NSStringFromPoint($0) }, forKey: "launcherOrigin") }
-    }
-    /// The blue "Ask AI" button that always sits in the bottom-right corner of the screen. ON by default.
-    static var showLauncher: Bool {
-        get { UserDefaults.standard.object(forKey: "showLauncher") as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: "showLauncher") }
-    }
 }
 
 // MARK: - Reading the current browser page
@@ -633,7 +623,7 @@ final class ChatViewController: NSViewController, WKNavigationDelegate, WKUIDele
         let ucc = webView.configuration.userContentController
         ucc.removeAllUserScripts()
         guard let url = Bundle.main.url(forResource: "messages-look", withExtension: "js"),
-              let source = try? String(contentsOf: url) else { return }
+              let source = try? String(contentsOf: url, encoding: .utf8) else { return }
         // 1) Very early: tell the script whether the look is on, and switch it on before the page
         //    draws (so you don't see a flash of the normal ChatGPT look first).
         let on = Settings.messagesLook
@@ -1206,7 +1196,7 @@ final class ChatViewController: NSViewController, WKNavigationDelegate, WKUIDele
     }
 }
 
-// MARK: - Small views: header avatar + "Ask AI" launcher
+// MARK: - Small views: header avatar + menu bar icon
 
 /// Holds the page status text ("Added: …", "Blocked site — …"). It is no longer shown in the header
 /// (the user found the line of text cluttered); instead every change is passed on via onChange,
@@ -1242,30 +1232,22 @@ final class AvatarView: NSView {
     }
 }
 
-/// The launcher: a blue-and-white version of the Messages app icon
+/// The app's menu bar icon: a blue-and-white version of the Messages app icon
 /// (rounded square with a blue gradient and a white speech bubble), drawn in code so it's sharp at any size.
-/// Click it to open the chat; drag it to move it anywhere on the screen.
-final class LauncherView: NSView {
-    var onClick: () -> Void = {}
-    var onRightClick: (NSEvent) -> Void = { _ in }
-    var onMoved: (NSPoint) -> Void = { _ in }       // called after a drag, with the new window position
-    static let iconSize: CGFloat = 56
-    static var pillSize: NSSize { NSSize(width: iconSize, height: iconSize) }   // (kept name: the window's size)
-    var pressed = false { didSet { needsDisplay = true } }
-
-    override func draw(_ dirtyRect: NSRect) {
-        let r = bounds.insetBy(dx: 1, dy: 1)
+/// (It used to be a floating button in the screen corner; the user moved it to the menu bar because
+/// a floating icon got in the way of full-screen videos.)
+func messagesIcon(size: CGFloat) -> NSImage {
+    NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
+        let r = rect.insetBy(dx: size * 0.03, dy: size * 0.03)
         // 1) Rounded square ("squircle") with a light-to-deep blue gradient, like Apple's app icons.
         let tile = NSBezierPath(roundedRect: r, xRadius: r.width * 0.235, yRadius: r.width * 0.235)
         let top = NSColor(srgbRed: 0.36, green: 0.70, blue: 1.00, alpha: 1)      // light blue
         let bottom = NSColor(srgbRed: 0.04, green: 0.42, blue: 0.98, alpha: 1)   // Messages blue
         NSGradient(starting: bottom, ending: top)?.draw(in: tile, angle: 90)
-        if pressed { NSColor.black.withAlphaComponent(0.15).setFill(); tile.fill() }
 
         // 2) The white speech bubble: an oval plus a small curled tail at its bottom-left.
         let w = r.width, h = r.height
         let bubble = NSRect(x: r.minX + w * 0.17, y: r.minY + h * 0.24, width: w * 0.66, height: h * 0.54)
-        let path = NSBezierPath(ovalIn: bubble)
         let tail = NSBezierPath()
         tail.move(to: NSPoint(x: bubble.minX + w * 0.14, y: bubble.minY + h * 0.10))
         tail.curve(to: NSPoint(x: bubble.minX + w * 0.02, y: bubble.minY - h * 0.06),
@@ -1276,50 +1258,10 @@ final class LauncherView: NSView {
                    controlPoint2: NSPoint(x: bubble.minX + w * 0.21, y: bubble.minY - h * 0.01))
         tail.close()
         NSColor.white.setFill()
-        path.fill()
+        NSBezierPath(ovalIn: bubble).fill()
         tail.fill()
+        return true
     }
-
-    // Clicks work straight away, even though another app is in front.
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-
-    // Click vs. drag: if the mouse moves more than a few points while held down, it's a drag (move the icon);
-    // otherwise letting go counts as a click (open the chat).
-    private var downPoint = NSPoint.zero        // mouse position on screen when pressed
-    private var downOrigin = NSPoint.zero       // icon window position when pressed
-    private var dragging = false
-    override func mouseDown(with event: NSEvent) {
-        pressed = true
-        dragging = false
-        downPoint = NSEvent.mouseLocation
-        downOrigin = window?.frame.origin ?? .zero
-    }
-    override func mouseDragged(with event: NSEvent) {
-        let now = NSEvent.mouseLocation
-        let dx = now.x - downPoint.x, dy = now.y - downPoint.y
-        if !dragging && hypot(dx, dy) < 4 { return }   // tiny wobble while clicking — ignore
-        dragging = true
-        window?.setFrameOrigin(NSPoint(x: downOrigin.x + dx, y: downOrigin.y + dy))
-    }
-    override func mouseUp(with event: NSEvent) {
-        pressed = false
-        if dragging {
-            if let origin = window?.frame.origin { onMoved(origin) }
-        } else if bounds.contains(convert(event.locationInWindow, from: nil)) {
-            onClick()
-        }
-    }
-    override func rightMouseDown(with event: NSEvent) { onRightClick(event) }
-    // Pointing-hand cursor, like a link.
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
-}
-
-/// The tiny borderless window that holds the launcher icon.
-/// Like the chat window it's a non-activating panel, so it can float over full-screen apps
-/// and clicking it doesn't pull you out of the app you're in.
-final class LauncherPanel: NSPanel {
-    override var canBecomeKey: Bool { false }   // never takes the keyboard
-    override var canBecomeMain: Bool { false }
 }
 
 // MARK: - The chat window
@@ -1345,7 +1287,6 @@ weak var sharedDelegate: AppDelegate?
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var statusItem: NSStatusItem!
     var window: ChatWindow!
-    var launcher: LauncherPanel!   // the blue "Ask AI" button in the bottom-right corner
     let chat = ChatViewController()
     var clickOutsideMonitor: Any?
     var lastBrowserID: String?     // last supported app you used (browser, Preview, Spotify)
@@ -1361,14 +1302,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         // Menu bar icon.
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        statusItem.button?.image = NSImage(systemSymbolName: "bubble.left.and.text.bubble.right", accessibilityDescription: "ChatGPT")
+        // Blue Messages-style icon (in colour, so it isn't turned black/white like template icons).
+        let icon = messagesIcon(size: 18)
+        icon.isTemplate = false
+        icon.accessibilityDescription = "ChatGPT"
+        statusItem.button?.image = icon
         statusItem.button?.target = self
         statusItem.button?.action = #selector(statusItemClicked)
         statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
         statusItem.button?.toolTip = "\(appName) (⌥Space)"
 
         buildWindow()
-        buildLauncher()
         registerHotKey()
 
         // Right-click → "Ask ChatGPT" on selected text (Safari, Chrome, Edge, Preview only — see build.sh).
@@ -1452,67 +1396,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         keepFullyOnScreen()
     }
 
-    // MARK: "Ask AI" launcher (always in the bottom-right corner)
-
-    func buildLauncher() {
-        let size = LauncherView.pillSize
-        launcher = LauncherPanel(contentRect: NSRect(origin: .zero, size: size),
-                                 styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        launcher.isOpaque = false
-        launcher.backgroundColor = .clear       // only the blue pill is visible…
-        launcher.hasShadow = true               // …with a soft shadow around it
-        launcher.level = .floating              // above normal windows
-        launcher.hidesOnDeactivate = false
-        // On every desktop/Space, over full-screen apps, and it doesn't move when you swipe between Spaces.
-        launcher.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-        let view = LauncherView(frame: NSRect(origin: .zero, size: size))
-        view.toolTip = "Ask AI (⌥Space) — drag to move"
-        view.onClick = { [weak self] in self?.showWindow() }
-        view.onMoved = { [weak self] origin in
-            Settings.launcherOrigin = origin       // remember where you put it
-            self?.positionLauncher()               // (nudges it back fully on screen if needed)
-        }
-        view.onRightClick = { [weak self] event in
-            guard let self = self else { return }
-            NSMenu.popUpContextMenu(self.buildMenu(), with: event, for: view)
-        }
-        launcher.contentView = view
-        positionLauncher()
-        updateLauncher()
-        // Re-place it when a monitor is plugged in / out or the Dock moves.
-        NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
-            self?.positionLauncher()
-        }
-    }
-
-    /// Where you dragged it, or (by default) the bottom-right corner of the main screen, 16 pt from the edges.
-    /// Always kept fully on a screen (e.g. after unplugging a monitor).
-    func positionLauncher() {
-        let size = LauncherView.pillSize
-        let main = (NSScreen.main ?? NSScreen.screens[0]).visibleFrame
-        var origin = Settings.launcherOrigin ?? NSPoint(x: main.maxX - size.width - 16, y: main.minY + 16)
-        let centre = NSPoint(x: origin.x + size.width / 2, y: origin.y + size.height / 2)
-        let area = NSScreen.screens.first { $0.frame.contains(centre) }?.visibleFrame ?? main
-        origin.x = min(max(origin.x, area.minX), area.maxX - size.width)
-        origin.y = min(max(origin.y, area.minY), area.maxY - size.height)
-        launcher.setFrameOrigin(origin)
-    }
-
-    /// The launcher shows while the chat is closed, and hides while it's open (like on the website).
-    func updateLauncher() {
-        if Settings.showLauncher && !window.isVisible {
-            positionLauncher()
-            launcher.orderFrontRegardless()
-        } else {
-            launcher.orderOut(nil)
-        }
-    }
-
-    @objc func toggleLauncherSetting() {
-        Settings.showLauncher.toggle()
-        updateLauncher()
-    }
-
     @objc func toggleMessagesLook() { chat.setMessagesLook(!Settings.messagesLook) }
 
     /// Pinned = stay on top of other apps and don't hide when clicking elsewhere.
@@ -1564,7 +1447,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             window.animator().alphaValue = 1
             window.animator().setFrameOrigin(end.origin)
         }
-        updateLauncher()          // chat is open → hide the Ask AI button
         if !Settings.pinned { startOutsideMonitor() }
         chat.windowDidAppear()
     }
@@ -1609,7 +1491,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             self.window.orderOut(nil)                // hides it; size stays saved
             self.window.alphaValue = 1
             self.window.setFrameOrigin(start.origin)
-            self.updateLauncher()                    // chat is closed → bring the launcher icon back
         })
     }
 
@@ -1688,8 +1569,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc func resetPosition() {
-        Settings.launcherOrigin = nil          // icon back to the corner too
-        positionLauncher()
         window.setFrame(bottomRightFrame(size: normalSize), display: true, animate: window.isVisible)
     }
 
@@ -1701,7 +1580,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statusItem.menu = nil                  // so left-click goes back to opening the window
     }
 
-    /// The right-click menu (menu bar icon and the Ask AI button share it).
+    /// The right-click menu of the menu bar icon.
     func buildMenu() -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
@@ -1712,17 +1591,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let open = NSMenuItem(title: "Open chatgpt.com in Browser", action: #selector(openInBrowser), keyEquivalent: "")
         open.target = self
         menu.addItem(open)
-        let reset = NSMenuItem(title: "Move Window and Icon to Bottom-Right", action: #selector(resetPosition), keyEquivalent: "")
+        let reset = NSMenuItem(title: "Move Window to Bottom-Right", action: #selector(resetPosition), keyEquivalent: "")
         reset.target = self
         menu.addItem(reset)
         let look = NSMenuItem(title: "Messages Look", action: #selector(toggleMessagesLook), keyEquivalent: "")
         look.target = self
         look.state = Settings.messagesLook ? .on : .off
         menu.addItem(look)
-        let launcherItem = NSMenuItem(title: "Show Ask AI Button", action: #selector(toggleLauncherSetting), keyEquivalent: "")
-        launcherItem.target = self
-        launcherItem.state = Settings.showLauncher ? .on : .off
-        menu.addItem(launcherItem)
         menu.addItem(.separator())
         // Privacy controls
         let reading = NSMenuItem(title: "Read Pages from Apps", action: #selector(toggleReading), keyEquivalent: "")
