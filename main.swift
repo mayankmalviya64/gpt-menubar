@@ -1260,17 +1260,17 @@ func messagesIcon(size: CGFloat, monochrome: Bool = false) -> NSImage {
         let bubble: NSRect
         let tail = NSBezierPath()
         if monochrome {
-            // Menu bar: at 18 points a thin tail is invisible, so this version has a rounder bubble and a
-            // big, clearly curved tail sweeping out to the bottom-left, so the speech-bubble shape reads at a glance.
+            // Menu bar: a slightly rounder bubble and
+            // a modest curved tail at the bottom-left, so the speech-bubble shape reads at a glance.
             let w = r.width, h = r.height
             bubble = NSRect(x: r.minX + w * 0.21, y: r.minY + h * 0.32, width: w * 0.60, height: h * 0.46)
-            tail.move(to: NSPoint(x: bubble.minX + w * 0.04, y: bubble.minY + h * 0.14))      // starts inside the oval
-            tail.curve(to: NSPoint(x: bubble.minX - w * 0.03, y: bubble.minY - h * 0.14),      // the tip, down-left
-                       controlPoint1: NSPoint(x: bubble.minX + w * 0.04, y: bubble.minY + h * 0.02),
-                       controlPoint2: NSPoint(x: bubble.minX + w * 0.01, y: bubble.minY - h * 0.08))
-            tail.curve(to: NSPoint(x: bubble.minX + w * 0.30, y: bubble.minY + h * 0.03),      // back into the oval
-                       controlPoint1: NSPoint(x: bubble.minX + w * 0.10, y: bubble.minY - h * 0.12),
-                       controlPoint2: NSPoint(x: bubble.minX + w * 0.22, y: bubble.minY - h * 0.06))
+            tail.move(to: NSPoint(x: bubble.minX + w * 0.08, y: bubble.minY + h * 0.10))      // starts inside the oval
+            tail.curve(to: NSPoint(x: bubble.minX + w * 0.01, y: bubble.minY - h * 0.08),      // the tip, down-left
+                       controlPoint1: NSPoint(x: bubble.minX + w * 0.08, y: bubble.minY + h * 0.01),
+                       controlPoint2: NSPoint(x: bubble.minX + w * 0.05, y: bubble.minY - h * 0.05))
+            tail.curve(to: NSPoint(x: bubble.minX + w * 0.24, y: bubble.minY + h * 0.02),      // back into the oval
+                       controlPoint1: NSPoint(x: bubble.minX + w * 0.10, y: bubble.minY - h * 0.07),
+                       controlPoint2: NSPoint(x: bubble.minX + w * 0.18, y: bubble.minY - h * 0.03))
         } else {
             // Blue icon: the original, wider bubble with a small curled tail.
             let w = r.width, h = r.height
