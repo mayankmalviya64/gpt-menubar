@@ -4,6 +4,14 @@ A small macOS menu bar app that keeps ChatGPT one shortcut away and can bring in
 reading or listening to. (Formerly called "ChatGPT Bar"; settings carry over automatically.)
 
 - **⌥Space** (or the menu bar icon) shows / hides a ChatGPT window, bottom-right by default.
+- **Ask AI button**: a blue "Ask AI" pill always sits in the bottom-right corner of the screen (even over
+  full-screen apps). Click it to open the chat; it hides while the chat is open. Right-click it for the menu.
+  Switch it off from the right-click menu → *Show Ask AI Button*.
+- **Messages look**: the ChatGPT page is restyled like Apple Messages (blue bubbles for you, grey for ChatGPT,
+  rounded message box), with a Messages-style header: ‹ opens a list of your ChatGPT chats (with search),
+  the slider icon shows ChatGPT's own controls (model picker, sidebar, share). It is still the real
+  chatgpt.com underneath, on your own account. Switch back to the normal look from the right-click menu →
+  *Messages Look*. The restyle lives in `messages-look.js`.
 - Resizable; reopens exactly where you left it, at the same size.
 - Log in once to your own ChatGPT account; uploads, voice, downloads all work.
 - **Page context**: reads

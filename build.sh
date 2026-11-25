@@ -12,6 +12,10 @@ mkdir -p "$APP/Contents/MacOS"
 swiftc -swift-version 5 -O main.swift -o "$APP/Contents/MacOS/GPTMenubar" \
   -framework Cocoa -framework WebKit -framework ServiceManagement -framework PDFKit
 
+# The Messages look (iMessage-style restyle of the ChatGPT page) is a separate script file.
+mkdir -p "$APP/Contents/Resources"
+cp messages-look.js "$APP/Contents/Resources/"
+
 # App settings: LSUIElement = menu bar only (no Dock icon); usage texts for permission prompts.
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
