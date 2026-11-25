@@ -1236,7 +1236,7 @@ final class AvatarView: NSView {
 /// (rounded square with a blue gradient and a white speech bubble), drawn in code so it's sharp at any size.
 /// (It used to be a floating button in the screen corner; the user moved it to the menu bar because
 /// a floating icon got in the way of full-screen videos.)
-/// `monochrome: true` draws just the outline of the rounded square plus a filled bubble, in one colour,
+/// `monochrome: true` draws the rounded square as an outline with a smaller solid bubble inside, in one colour,
 /// for the menu bar (the blue stood out too much next to the other menu bar icons).
 func messagesIcon(size: CGFloat, monochrome: Bool = false) -> NSImage {
     NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
@@ -1257,8 +1257,10 @@ func messagesIcon(size: CGFloat, monochrome: Bool = false) -> NSImage {
         }
 
         // 2) The white speech bubble: an oval plus a small curled tail at its bottom-left.
-        let w = r.width, h = r.height
-        let bubble = NSRect(x: r.minX + w * 0.17, y: r.minY + h * 0.24, width: w * 0.66, height: h * 0.54)
+        // Bubble size: the menu bar version is shrunk to 80% (still centred) so it sits inside the outline with room to spare.
+        let k: CGFloat = monochrome ? 0.8 : 1.0
+        let w = r.width * k, h = r.height * k
+        let bubble = NSRect(x: r.midX - w * 0.33, y: r.midY - h * 0.03 - h * 0.27, width: w * 0.66, height: h * 0.54)
         let tail = NSBezierPath()
         tail.move(to: NSPoint(x: bubble.minX + w * 0.14, y: bubble.minY + h * 0.10))
         tail.curve(to: NSPoint(x: bubble.minX + w * 0.02, y: bubble.minY - h * 0.06),
@@ -1268,7 +1270,7 @@ func messagesIcon(size: CGFloat, monochrome: Bool = false) -> NSImage {
                    controlPoint1: NSPoint(x: bubble.minX + w * 0.12, y: bubble.minY - h * 0.05),
                    controlPoint2: NSPoint(x: bubble.minX + w * 0.21, y: bubble.minY - h * 0.01))
         tail.close()
-        // Fill the bubble: white on the blue icon; on the menu bar version any colour works (macOS recolours it).
+        // A solid bubble: white on the blue icon; on the menu bar version macOS recolours it to match the outline.
         NSColor.white.setFill()
         NSBezierPath(ovalIn: bubble).fill()
         tail.fill()
