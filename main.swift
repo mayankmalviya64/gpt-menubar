@@ -1236,7 +1236,7 @@ final class AvatarView: NSView {
 /// (rounded square with a blue gradient and a white speech bubble), drawn in code so it's sharp at any size.
 /// (It used to be a floating button in the screen corner; the user moved it to the menu bar because
 /// a floating icon got in the way of full-screen videos.)
-/// `monochrome: true` draws the rounded square as an outline with a smaller solid bubble inside, in one colour,
+/// `monochrome: true` draws the rounded square as an outline with a solid bubble inside, in one colour,
 /// for the menu bar (the blue stood out too much next to the other menu bar icons).
 func messagesIcon(size: CGFloat, monochrome: Bool = false) -> NSImage {
     NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
@@ -1257,18 +1257,32 @@ func messagesIcon(size: CGFloat, monochrome: Bool = false) -> NSImage {
         }
 
         // 2) The white speech bubble: an oval plus a small curled tail at its bottom-left.
-        // Bubble size: the menu bar version is shrunk to 80% (still centred) so it sits inside the outline with room to spare.
-        let k: CGFloat = monochrome ? 0.8 : 1.0
-        let w = r.width * k, h = r.height * k
-        let bubble = NSRect(x: r.midX - w * 0.33, y: r.midY - h * 0.03 - h * 0.27, width: w * 0.66, height: h * 0.54)
+        let bubble: NSRect
         let tail = NSBezierPath()
-        tail.move(to: NSPoint(x: bubble.minX + w * 0.14, y: bubble.minY + h * 0.10))
-        tail.curve(to: NSPoint(x: bubble.minX + w * 0.02, y: bubble.minY - h * 0.06),
-                   controlPoint1: NSPoint(x: bubble.minX + w * 0.12, y: bubble.minY + h * 0.01),
-                   controlPoint2: NSPoint(x: bubble.minX + w * 0.08, y: bubble.minY - h * 0.04))
-        tail.curve(to: NSPoint(x: bubble.minX + w * 0.27, y: bubble.minY + h * 0.03),
-                   controlPoint1: NSPoint(x: bubble.minX + w * 0.12, y: bubble.minY - h * 0.05),
-                   controlPoint2: NSPoint(x: bubble.minX + w * 0.21, y: bubble.minY - h * 0.01))
+        if monochrome {
+            // Menu bar: at 18 points a thin tail is invisible, so this version has a rounder bubble and a
+            // big, clearly curved tail sweeping out to the bottom-left, so the speech-bubble shape reads at a glance.
+            let w = r.width, h = r.height
+            bubble = NSRect(x: r.minX + w * 0.21, y: r.minY + h * 0.32, width: w * 0.60, height: h * 0.46)
+            tail.move(to: NSPoint(x: bubble.minX + w * 0.04, y: bubble.minY + h * 0.14))      // starts inside the oval
+            tail.curve(to: NSPoint(x: bubble.minX - w * 0.03, y: bubble.minY - h * 0.14),      // the tip, down-left
+                       controlPoint1: NSPoint(x: bubble.minX + w * 0.04, y: bubble.minY + h * 0.02),
+                       controlPoint2: NSPoint(x: bubble.minX + w * 0.01, y: bubble.minY - h * 0.08))
+            tail.curve(to: NSPoint(x: bubble.minX + w * 0.30, y: bubble.minY + h * 0.03),      // back into the oval
+                       controlPoint1: NSPoint(x: bubble.minX + w * 0.10, y: bubble.minY - h * 0.12),
+                       controlPoint2: NSPoint(x: bubble.minX + w * 0.22, y: bubble.minY - h * 0.06))
+        } else {
+            // Blue icon: the original, wider bubble with a small curled tail.
+            let w = r.width, h = r.height
+            bubble = NSRect(x: r.minX + w * 0.17, y: r.minY + h * 0.24, width: w * 0.66, height: h * 0.54)
+            tail.move(to: NSPoint(x: bubble.minX + w * 0.14, y: bubble.minY + h * 0.10))
+            tail.curve(to: NSPoint(x: bubble.minX + w * 0.02, y: bubble.minY - h * 0.06),
+                       controlPoint1: NSPoint(x: bubble.minX + w * 0.12, y: bubble.minY + h * 0.01),
+                       controlPoint2: NSPoint(x: bubble.minX + w * 0.08, y: bubble.minY - h * 0.04))
+            tail.curve(to: NSPoint(x: bubble.minX + w * 0.27, y: bubble.minY + h * 0.03),
+                       controlPoint1: NSPoint(x: bubble.minX + w * 0.12, y: bubble.minY - h * 0.05),
+                       controlPoint2: NSPoint(x: bubble.minX + w * 0.21, y: bubble.minY - h * 0.01))
+        }
         tail.close()
         // A solid bubble: white on the blue icon; on the menu bar version macOS recolours it to match the outline.
         NSColor.white.setFill()
