@@ -1236,8 +1236,8 @@ final class AvatarView: NSView {
 /// (rounded square with a blue gradient and a white speech bubble), drawn in code so it's sharp at any size.
 /// (It used to be a floating button in the screen corner; the user moved it to the menu bar because
 /// a floating icon got in the way of full-screen videos.)
-/// `monochrome: true` draws it in one plain colour with the bubble cut out as a hole, for the menu bar:
-/// macOS then tints it white or black like every other menu bar icon (the blue stood out too much).
+/// `monochrome: true` draws a black rounded square with a white bubble, for the menu bar
+/// (the blue stood out too much next to the other menu bar icons).
 func messagesIcon(size: CGFloat, monochrome: Bool = false) -> NSImage {
     NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
         let r = rect.insetBy(dx: size * 0.03, dy: size * 0.03)
@@ -1264,13 +1264,10 @@ func messagesIcon(size: CGFloat, monochrome: Bool = false) -> NSImage {
                    controlPoint1: NSPoint(x: bubble.minX + w * 0.12, y: bubble.minY - h * 0.05),
                    controlPoint2: NSPoint(x: bubble.minX + w * 0.21, y: bubble.minY - h * 0.01))
         tail.close()
-        // Monochrome: "clear" erases the bubble shape out of the square, leaving a see-through hole.
-        // Colour: paint the bubble white on top of the blue.
-        if monochrome { NSGraphicsContext.current?.compositingOperation = .clear }
+        // Paint the bubble white on top of the square (black or blue).
         NSColor.white.setFill()
         NSBezierPath(ovalIn: bubble).fill()
         tail.fill()
-        NSGraphicsContext.current?.compositingOperation = .sourceOver
         return true
     }
 }
@@ -1315,7 +1312,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         // Blue Messages-style icon (in colour, so it isn't turned black/white like template icons).
         let icon = messagesIcon(size: 18, monochrome: true)
-        icon.isTemplate = true   // "template" = macOS colours it to match the other menu bar icons
+        icon.isTemplate = false  // keep our own black + white (a "template" icon would be recoloured to one colour)
         icon.accessibilityDescription = "ChatGPT"
         statusItem.button?.image = icon
         statusItem.button?.target = self
