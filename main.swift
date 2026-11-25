@@ -91,6 +91,11 @@ enum Settings {
         get { UserDefaults.standard.object(forKey: "messagesLook") as? Bool ?? true }
         set { UserDefaults.standard.set(newValue, forKey: "messagesLook") }
     }
+    /// Where you dragged the launcher icon to (nil = default bottom-right corner).
+    static var launcherOrigin: NSPoint? {
+        get { (UserDefaults.standard.string(forKey: "launcherOrigin")).map { NSPointFromString($0) } }
+        set { UserDefaults.standard.set(newValue.map { NSStringFromPoint($0) }, forKey: "launcherOrigin") }
+    }
     /// The blue "Ask AI" button that always sits in the bottom-right corner of the screen. ON by default.
     static var showLauncher: Bool {
         get { UserDefaults.standard.object(forKey: "showLauncher") as? Bool ?? true }
@@ -584,11 +589,12 @@ func readSpotify() -> PageContext? {
 
 final class ChatViewController: NSViewController, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandler {
     let webView: WKWebView
-    let pageLabel = NSTextField(labelWithString: "No page")
-    let autoCheckbox = NSButton(checkboxWithTitle: "Auto", target: nil, action: nil)
+    let pageLabel = StatusLabel(labelWithString: "No page")   // status text → page button tooltip
+    let autoCheckbox = NSButton()            // "A" icon: blue-filled when Auto is on
+    let avatar = AvatarView(text: "GPT")     // header picture: the ChatGPT logo once it has loaded
     let pinButton = NSButton()
     let controlsButton = NSButton()          // shows / hides ChatGPT's own top bar (Messages look only)
-    let readCheckbox = NSButton(checkboxWithTitle: "", target: nil, action: nil)   // ticked = page read in
+    let readCheckbox = NSButton()            // page icon: blue-filled = page read in
     var popupWindows: [NSWindow] = []        // login popups (Google/Apple/Microsoft)
     var pageLoaded = false
     var lastAutoURL = ""                     // page we already auto-added (avoid duplicates)
@@ -637,6 +643,35 @@ final class ChatViewController: NSViewController, WKNavigationDelegate, WKUIDele
         ucc.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true))
     }
 
+    // MARK: ChatGPT logo for the header
+
+    /// Where the logo is kept, so it shows instantly on the next launch.
+    var logoCacheURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("\(appName)/chatgpt-logo.png")
+    }
+    func loadCachedLogo() -> NSImage? { NSImage(contentsOf: logoCacheURL) }
+
+    /// Asks the ChatGPT page for its own app icon (the logo it shows on phones' home screens),
+    /// downloads it once and keeps a copy. Nothing is bundled into the app itself.
+    func fetchLogo() {
+        let js = """
+        const l = document.querySelector('link[rel="apple-touch-icon"]') || document.querySelector('link[rel~="icon"][sizes]') || document.querySelector('link[rel~="icon"]');
+        return l ? l.href : location.origin + '/apple-touch-icon.png';
+        """
+        webView.callAsyncJavaScript(js, arguments: [:], in: nil, in: .page) { [weak self] result in
+            guard let self = self, case .success(let value) = result, let href = value as? String,
+                  let url = URL(string: href), url.host?.hasSuffix("chatgpt.com") == true || url.host?.hasSuffix("oaistatic.com") == true
+            else { return }
+            URLSession.shared.dataTask(with: url) { data, _, _ in
+                guard let data = data, let image = NSImage(data: data), image.isValid else { return }
+                try? FileManager.default.createDirectory(at: self.logoCacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try? data.write(to: self.logoCacheURL)
+                DispatchQueue.main.async { self.avatar.image = image }
+            }.resume()
+        }
+    }
+
     /// Right-click menu → Messages Look. Applies instantly, no reload needed.
     func setMessagesLook(_ on: Bool) {
         Settings.messagesLook = on
@@ -679,6 +714,21 @@ final class ChatViewController: NSViewController, WKNavigationDelegate, WKUIDele
         }
         // "Page read" checkbox (no label) at the start of the toolbar.
         // Ticked = the current page / song is already in the message box. Click it to add it.
+        // Both are on/off buttons drawn as icons (outline = off, filled = on), like Messages' blue icons.
+        // They still behave exactly like the old checkboxes (.on / .off).
+        func iconToggle(_ b: NSButton, _ symbol: String) {
+            b.setButtonType(.pushOnPushOff)
+            b.isBordered = false
+            b.title = ""
+            b.imagePosition = .imageOnly
+            b.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+            b.alternateImage = NSImage(systemSymbolName: symbol + ".fill", accessibilityDescription: nil)
+            b.contentTintColor = .systemBlue
+        }
+        iconToggle(readCheckbox, "doc.text")
+        iconToggle(autoCheckbox, "a.circle")
+        let readHelp = "Click to add the current Safari / Chrome / Edge page, Preview PDF or Spotify / YouTube Music song. Filled = already in the message box."
+        pageLabel.onChange = { [weak self] status in self?.readCheckbox.toolTip = status + "\n\n" + readHelp }
         readCheckbox.target = self
         readCheckbox.action = #selector(readCheckboxClicked)
         readCheckbox.state = .off
@@ -687,8 +737,7 @@ final class ChatViewController: NSViewController, WKNavigationDelegate, WKUIDele
         autoCheckbox.target = self
         autoCheckbox.action = #selector(autoToggled)
         autoCheckbox.state = Settings.autoContext ? .on : .off
-        autoCheckbox.controlSize = .small
-        autoCheckbox.toolTip = "Automatically add the page (or song) each time you open \(appName) on a new one"
+        autoCheckbox.toolTip = "Auto: add the page (or song) each time you open \(appName) on a new one"
 
         pinButton.image = NSImage(systemSymbolName: Settings.pinned ? "pin.fill" : "pin", accessibilityDescription: "Pin")
         pinButton.isBordered = false
@@ -723,10 +772,10 @@ final class ChatViewController: NSViewController, WKNavigationDelegate, WKUIDele
         let left = NSStackView(views: [back, iconButton("square.and.pencil", "New chat (⌘N)", #selector(newChat)), readCheckbox])
         left.spacing = 8
 
-        let avatar = AvatarView(text: "GPT")
+        avatar.image = loadCachedLogo()
         let name = NSTextField(labelWithString: "ChatGPT")
         name.font = .systemFont(ofSize: 11, weight: .medium)
-        let middle = NSStackView(views: [avatar, name, pageLabel])
+        let middle = NSStackView(views: [avatar, name])
         middle.orientation = .vertical
         middle.spacing = 1
         middle.alignment = .centerX
@@ -761,10 +810,10 @@ final class ChatViewController: NSViewController, WKNavigationDelegate, WKUIDele
             header.topAnchor.constraint(equalTo: root.topAnchor),
             header.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             header.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            header.heightAnchor.constraint(equalToConstant: 66),
+            header.heightAnchor.constraint(equalToConstant: 60),
             // Left inset leaves room for the window's red close button (top-left corner).
             left.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 30),
-            left.centerYAnchor.constraint(equalTo: header.centerYAnchor, constant: 4),
+            left.centerYAnchor.constraint(equalTo: header.centerYAnchor, constant: 6),
             right.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -10),
             right.centerYAnchor.constraint(equalTo: left.centerYAnchor),
             centre,
@@ -1054,6 +1103,7 @@ final class ChatViewController: NSViewController, WKNavigationDelegate, WKUIDele
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         if webView == self.webView {
             pageLoaded = true
+            if avatar.image == nil { fetchLogo() }
             if let text = pendingInsert { pendingInsert = nil; insertIntoComposer(text, attemptsLeft: 12) }
             if pendingAutoAdd { pendingAutoAdd = false; addPage(manual: false) }
         }
@@ -1158,14 +1208,30 @@ final class ChatViewController: NSViewController, WKNavigationDelegate, WKUIDele
 
 // MARK: - Small views: header avatar + "Ask AI" launcher
 
+/// Holds the page status text ("Added: …", "Blocked site — …"). It is no longer shown in the header
+/// (the user found the line of text cluttered); instead every change is passed on via onChange,
+/// which puts it in the page button's tooltip.
+final class StatusLabel: NSTextField {
+    var onChange: (String) -> Void = { _ in }
+    override var stringValue: String { didSet { onChange(stringValue) } }
+}
+
 /// The round grey avatar with white letters in the header (like a contact photo in Messages).
 final class AvatarView: NSView {
     let text: String
+    /// The ChatGPT logo. Until it has loaded, the grey "GPT" circle is drawn instead.
+    var image: NSImage? { didSet { needsDisplay = true } }
     init(text: String) { self.text = text; super.init(frame: .zero) }
     required init?(coder: NSCoder) { fatalError("not used") }
     override func draw(_ dirtyRect: NSRect) {
-        // Grey top-to-bottom gradient circle (same colours as the Ask AI chat's avatar).
         let circle = NSBezierPath(ovalIn: bounds)
+        if let image = image {
+            // The logo, cut into a circle.
+            circle.addClip()
+            image.draw(in: bounds)
+            return
+        }
+        // Grey top-to-bottom gradient circle (same colours as the Ask AI chat's avatar).
         NSGradient(starting: NSColor(srgbRed: 0.65, green: 0.67, blue: 0.72, alpha: 1),
                    ending: NSColor(srgbRed: 0.52, green: 0.54, blue: 0.59, alpha: 1))?.draw(in: circle, angle: -90)
         // White letters in the middle.
@@ -1176,50 +1242,79 @@ final class AvatarView: NSView {
     }
 }
 
-/// The blue "Ask AI" pill, copied from the button on the company overview pages.
+/// The launcher: a blue-and-white version of the Messages app icon
+/// (rounded square with a blue gradient and a white speech bubble), drawn in code so it's sharp at any size.
+/// Click it to open the chat; drag it to move it anywhere on the screen.
 final class LauncherView: NSView {
     var onClick: () -> Void = {}
     var onRightClick: (NSEvent) -> Void = { _ in }
-    static let blue = NSColor(srgbRed: 0x31 / 255.0, green: 0x57 / 255.0, blue: 0xd5 / 255.0, alpha: 1)   // #3157d5
-    static let font = NSFont.systemFont(ofSize: 16, weight: .semibold)
+    var onMoved: (NSPoint) -> Void = { _ in }       // called after a drag, with the new window position
+    static let iconSize: CGFloat = 56
+    static var pillSize: NSSize { NSSize(width: iconSize, height: iconSize) }   // (kept name: the window's size)
     var pressed = false { didSet { needsDisplay = true } }
 
-    /// Width / height the pill needs: padding + chat icon + gap + "Ask AI".
-    static var pillSize: NSSize {
-        let textWidth = ("Ask AI" as NSString).size(withAttributes: [.font: font]).width
-        return NSSize(width: ceil(18 + 20 + 8 + textWidth + 18), height: 44)
-    }
-
     override func draw(_ dirtyRect: NSRect) {
-        // Rounded blue pill (slightly darker while pressed).
-        let pill = NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2)
-        (pressed ? LauncherView.blue.blended(withFraction: 0.15, of: .black)! : LauncherView.blue).setFill()
-        pill.fill()
-        // White chat-bubble icon.
-        let config = NSImage.SymbolConfiguration(pointSize: 17, weight: .semibold).applying(.init(paletteColors: [.white]))
-        if let icon = NSImage(systemSymbolName: "bubble.left.fill", accessibilityDescription: nil)?.withSymbolConfiguration(config) {
-            let s = icon.size
-            icon.draw(in: NSRect(x: 18 + (20 - s.width) / 2, y: bounds.midY - s.height / 2, width: s.width, height: s.height))
-        }
-        // "Ask AI" in white.
-        let attrs: [NSAttributedString.Key: Any] = [.font: LauncherView.font, .foregroundColor: NSColor.white]
-        let textSize = ("Ask AI" as NSString).size(withAttributes: attrs)
-        ("Ask AI" as NSString).draw(at: NSPoint(x: 18 + 20 + 8, y: bounds.midY - textSize.height / 2), withAttributes: attrs)
+        let r = bounds.insetBy(dx: 1, dy: 1)
+        // 1) Rounded square ("squircle") with a light-to-deep blue gradient, like Apple's app icons.
+        let tile = NSBezierPath(roundedRect: r, xRadius: r.width * 0.235, yRadius: r.width * 0.235)
+        let top = NSColor(srgbRed: 0.36, green: 0.70, blue: 1.00, alpha: 1)      // light blue
+        let bottom = NSColor(srgbRed: 0.04, green: 0.42, blue: 0.98, alpha: 1)   // Messages blue
+        NSGradient(starting: bottom, ending: top)?.draw(in: tile, angle: 90)
+        if pressed { NSColor.black.withAlphaComponent(0.15).setFill(); tile.fill() }
+
+        // 2) The white speech bubble: an oval plus a small curled tail at its bottom-left.
+        let w = r.width, h = r.height
+        let bubble = NSRect(x: r.minX + w * 0.17, y: r.minY + h * 0.24, width: w * 0.66, height: h * 0.54)
+        let path = NSBezierPath(ovalIn: bubble)
+        let tail = NSBezierPath()
+        tail.move(to: NSPoint(x: bubble.minX + w * 0.14, y: bubble.minY + h * 0.10))
+        tail.curve(to: NSPoint(x: bubble.minX + w * 0.02, y: bubble.minY - h * 0.06),
+                   controlPoint1: NSPoint(x: bubble.minX + w * 0.12, y: bubble.minY + h * 0.01),
+                   controlPoint2: NSPoint(x: bubble.minX + w * 0.08, y: bubble.minY - h * 0.04))
+        tail.curve(to: NSPoint(x: bubble.minX + w * 0.27, y: bubble.minY + h * 0.03),
+                   controlPoint1: NSPoint(x: bubble.minX + w * 0.12, y: bubble.minY - h * 0.05),
+                   controlPoint2: NSPoint(x: bubble.minX + w * 0.21, y: bubble.minY - h * 0.01))
+        tail.close()
+        NSColor.white.setFill()
+        path.fill()
+        tail.fill()
     }
 
     // Clicks work straight away, even though another app is in front.
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    override func mouseDown(with event: NSEvent) { pressed = true }
+
+    // Click vs. drag: if the mouse moves more than a few points while held down, it's a drag (move the icon);
+    // otherwise letting go counts as a click (open the chat).
+    private var downPoint = NSPoint.zero        // mouse position on screen when pressed
+    private var downOrigin = NSPoint.zero       // icon window position when pressed
+    private var dragging = false
+    override func mouseDown(with event: NSEvent) {
+        pressed = true
+        dragging = false
+        downPoint = NSEvent.mouseLocation
+        downOrigin = window?.frame.origin ?? .zero
+    }
+    override func mouseDragged(with event: NSEvent) {
+        let now = NSEvent.mouseLocation
+        let dx = now.x - downPoint.x, dy = now.y - downPoint.y
+        if !dragging && hypot(dx, dy) < 4 { return }   // tiny wobble while clicking — ignore
+        dragging = true
+        window?.setFrameOrigin(NSPoint(x: downOrigin.x + dx, y: downOrigin.y + dy))
+    }
     override func mouseUp(with event: NSEvent) {
         pressed = false
-        if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick() }
+        if dragging {
+            if let origin = window?.frame.origin { onMoved(origin) }
+        } else if bounds.contains(convert(event.locationInWindow, from: nil)) {
+            onClick()
+        }
     }
     override func rightMouseDown(with event: NSEvent) { onRightClick(event) }
     // Pointing-hand cursor, like a link.
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 }
 
-/// The tiny borderless window that holds the launcher pill.
+/// The tiny borderless window that holds the launcher icon.
 /// Like the chat window it's a non-activating panel, so it can float over full-screen apps
 /// and clicking it doesn't pull you out of the app you're in.
 final class LauncherPanel: NSPanel {
@@ -1371,8 +1466,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // On every desktop/Space, over full-screen apps, and it doesn't move when you swipe between Spaces.
         launcher.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         let view = LauncherView(frame: NSRect(origin: .zero, size: size))
-        view.toolTip = "Ask AI (⌥Space)"
+        view.toolTip = "Ask AI (⌥Space) — drag to move"
         view.onClick = { [weak self] in self?.showWindow() }
+        view.onMoved = { [weak self] origin in
+            Settings.launcherOrigin = origin       // remember where you put it
+            self?.positionLauncher()               // (nudges it back fully on screen if needed)
+        }
         view.onRightClick = { [weak self] event in
             guard let self = self else { return }
             NSMenu.popUpContextMenu(self.buildMenu(), with: event, for: view)
@@ -1386,11 +1485,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
-    /// Bottom-right corner of the main screen, 16 pt from the edges (same spot as the chat window's corner).
+    /// Where you dragged it, or (by default) the bottom-right corner of the main screen, 16 pt from the edges.
+    /// Always kept fully on a screen (e.g. after unplugging a monitor).
     func positionLauncher() {
-        let area = (NSScreen.main ?? NSScreen.screens[0]).visibleFrame
         let size = LauncherView.pillSize
-        launcher.setFrameOrigin(NSPoint(x: area.maxX - size.width - 16, y: area.minY + 16))
+        let main = (NSScreen.main ?? NSScreen.screens[0]).visibleFrame
+        var origin = Settings.launcherOrigin ?? NSPoint(x: main.maxX - size.width - 16, y: main.minY + 16)
+        let centre = NSPoint(x: origin.x + size.width / 2, y: origin.y + size.height / 2)
+        let area = NSScreen.screens.first { $0.frame.contains(centre) }?.visibleFrame ?? main
+        origin.x = min(max(origin.x, area.minX), area.maxX - size.width)
+        origin.y = min(max(origin.y, area.minY), area.maxY - size.height)
+        launcher.setFrameOrigin(origin)
     }
 
     /// The launcher shows while the chat is closed, and hides while it's open (like on the website).
@@ -1439,11 +1544,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
+    var hideCount = 0     // counts close animations, so a quick reopen cancels a close that's still running
+
     func showWindow() {
-        // If the saved spot is on a monitor that's no longer connected, use the bottom-right corner.
-        if !isOnSomeScreen(window.frame) { window.setFrame(bottomRightFrame(size: window.frame.size), display: false) }
+        hideCount += 1                // cancel any close animation still running
+        // Like the Ask AI chat on the website: it always pops out of the bottom-right corner
+        // (your size is kept; only the position is reset to the corner).
+        let final = bottomRightFrame(size: window.frame.size)
+        window.setFrame(final, display: false)
         keepFullyOnScreen()
+        // Pop-in: start slightly lower and see-through, then glide up into place (~0.2 s).
+        let end = window.frame
+        window.alphaValue = 0
+        window.setFrameOrigin(NSPoint(x: end.minX, y: end.minY - 14))
         bringToFront()
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.2
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            window.animator().alphaValue = 1
+            window.animator().setFrameOrigin(end.origin)
+        }
         updateLauncher()          // chat is open → hide the Ask AI button
         if !Settings.pinned { startOutsideMonitor() }
         chat.windowDidAppear()
@@ -1475,8 +1595,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func hideWindow() {
         guard window.isVisible else { return }
         stopOutsideMonitor()
-        window.orderOut(nil)       // hides it; position and size stay saved
-        updateLauncher()           // chat is closed → bring the Ask AI button back
+        // Pop-out: fade and sink back into the corner (~0.15 s), then really hide it.
+        hideCount += 1
+        let myHide = hideCount
+        let start = window.frame
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.15
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            window.animator().alphaValue = 0
+            window.animator().setFrameOrigin(NSPoint(x: start.minX, y: start.minY - 14))
+        }, completionHandler: { [weak self] in
+            guard let self = self, myHide == self.hideCount else { return }   // reopened meanwhile → keep it
+            self.window.orderOut(nil)                // hides it; size stays saved
+            self.window.alphaValue = 1
+            self.window.setFrameOrigin(start.origin)
+            self.updateLauncher()                    // chat is closed → bring the launcher icon back
+        })
     }
 
     // MARK: ⌥Space keyboard shortcut
@@ -1554,6 +1688,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc func resetPosition() {
+        Settings.launcherOrigin = nil          // icon back to the corner too
+        positionLauncher()
         window.setFrame(bottomRightFrame(size: normalSize), display: true, animate: window.isVisible)
     }
 
@@ -1576,7 +1712,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let open = NSMenuItem(title: "Open chatgpt.com in Browser", action: #selector(openInBrowser), keyEquivalent: "")
         open.target = self
         menu.addItem(open)
-        let reset = NSMenuItem(title: "Move Window to Bottom-Right", action: #selector(resetPosition), keyEquivalent: "")
+        let reset = NSMenuItem(title: "Move Window and Icon to Bottom-Right", action: #selector(resetPosition), keyEquivalent: "")
         reset.target = self
         menu.addItem(reset)
         let look = NSMenuItem(title: "Messages Look", action: #selector(toggleMessagesLook), keyEquivalent: "")

@@ -4,14 +4,17 @@ A small macOS menu bar app that keeps ChatGPT one shortcut away and can bring in
 reading or listening to. (Formerly called "ChatGPT Bar"; settings carry over automatically.)
 
 - **⌥Space** (or the menu bar icon) shows / hides a ChatGPT window, bottom-right by default.
-- **Ask AI button**: a blue "Ask AI" pill always sits in the bottom-right corner of the screen (even over
-  full-screen apps). Click it to open the chat; it hides while the chat is open. Right-click it for the menu.
-  Switch it off from the right-click menu → *Show Ask AI Button*.
-- **Messages look**: the ChatGPT page is restyled like Apple Messages (blue bubbles for you, grey for ChatGPT,
-  rounded message box), with a Messages-style header: ‹ opens a list of your ChatGPT chats (with search),
-  the slider icon shows ChatGPT's own controls (model picker, sidebar, share). It is still the real
-  chatgpt.com underneath, on your own account. Switch back to the normal look from the right-click menu →
-  *Messages Look*. The restyle lives in `messages-look.js`.
+- **Launcher icon**: a blue-and-white Messages-style app icon always sits on screen (bottom-right by default,
+  even over full-screen apps). Click it to open the chat; drag it anywhere and it stays there. It hides while
+  the chat is open. Right-click it for the menu. Switch it off from the right-click menu → *Show Ask AI Button*.
+- The chat always pops out of the **bottom-right corner** (like the Ask AI chat on the company overview pages)
+  and sinks back into it when closed. Your window size is remembered.
+- **Messages look**: the ChatGPT page is restyled like Apple Messages: blue bubbles for you, grey for ChatGPT,
+  a one-row "iMessage" box, no greeting / disclaimer text, and a clean header with the ChatGPT logo.
+  Header icons: ‹ your chats (Messages-style list with search), ✎ new chat, 📄 add the page (filled = added;
+  hover it for the page status), Ⓐ Auto, pin, slider = ChatGPT's own controls (model picker, sidebar, share),
+  bigger/smaller, reload. It is still the real chatgpt.com underneath, on your own account. Switch back to the
+  normal look from the right-click menu → *Messages Look*. The restyle lives in `messages-look.js`.
 - Resizable; reopens exactly where you left it, at the same size.
 - Log in once to your own ChatGPT account; uploads, voice, downloads all work.
 - **Page context**: reads
@@ -22,9 +25,9 @@ reading or listening to. (Formerly called "ChatGPT Bar"; settings carry over aut
     position, and the lyrics if the Lyrics tab has them),
 
   and puts it into the message box.
-  - **☑ checkbox** (start of the toolbar): ticked when the current page / song has been read into the
-    message box, unticked otherwise. Click it to add the page.
-  - **Auto**: adds the page each time you open the window on a new page or song.
+  - **📄 page icon** (header): filled when the current page / song has been read into the
+    message box. Click it to add the page.
+  - **Ⓐ Auto**: adds the page each time you open the window on a new page or song.
   - **Ask about a selection**: select text in Safari, Chrome, Edge or Preview → right-click → **Ask ChatGPT**
     (under Services if macOS groups it there). The selection is sent with the whole page/PDF as
     background, and the cursor waits for your question. ⌥Space with text selected in a browser does the same.

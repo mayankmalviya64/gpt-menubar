@@ -60,10 +60,34 @@ html.gm-on h4[data-conversation-role=assistant]+div::after{left:-26px;width:26px
 html.gm-on .turn-action-controls{opacity:0;transition:opacity .15s}
 html.gm-on [data-talvt-turn-state]:hover .turn-action-controls,html.gm-on .turn-action-controls:focus-within{opacity:1}
 
-/* ---- The message box: a thin rounded "iMessage" bar ---- */
+/* ---- Hide ChatGPT's extra text so it reads like a Messages thread ----
+   The big "Temporary chat / What can I help with?" greeting, and the model picker in the message box
+   (the ⚙︎ "ChatGPT controls" header button brings the model picker back). */
+html.gm-on [class*="Greeting-"]{visibility:hidden!important}
+html.gm-on:not(.gm-controls) [data-composer-layout] button[aria-label="Select ChatGPT model"]{display:none!important}
+/* Small grey notes like "For safety, we may keep a copy…" are found by their text (see hideNotes below). */
+html.gm-on [data-gm-hide]{display:none!important}
+/* The strip behind the message box (ChatGPT paints it light grey) and its fade: plain background instead. */
+html.gm-on [class*="ComposerRegion-"],html.gm-on [class*="ComposerChrome-"]{background:var(--im-bg)!important;background-image:none!important}
+html.gm-on [class*="ComposerRegion-"]::before,html.gm-on [class*="ComposerRegion-"]::after,
+html.gm-on [class*="ComposerChrome-"]::before,html.gm-on [class*="ComposerChrome-"]::after{background:none!important;background-image:none!important}
+
+/* ---- The message box: one row, like Messages:  ⊕  [ iMessage            🎤 ]  ⬆ ----
+   ChatGPT stacks the box into two rows when the window is narrow; this keeps it on one row. */
+html.gm-on [data-composer-footer-responsive]{grid-template-columns:auto minmax(0,1fr) auto!important;grid-template-rows:auto!important;align-items:end!important}
+html.gm-on [data-composer-footer-responsive]>[data-composer-leading-controls]{grid-column:1!important;grid-row:1!important;align-self:end}
+html.gm-on [data-composer-footer-responsive]>:nth-child(2){grid-column:2!important;grid-row:1!important;min-width:0}
+html.gm-on [data-composer-footer-responsive]>[data-composer-trailing-controls]{grid-column:3!important;grid-row:1!important;align-self:end}
+html.gm-on [data-composer-expansion-control]{display:none!important}
+/* "iMessage" instead of "Ask ChatGPT" in the empty box. */
+html.gm-on .ProseMirror p.placeholder::before{content:"iMessage"!important;color:var(--im-sub)!important}
+html.gm-on .ProseMirror{font-size:15px!important}
 /* (An outline, not a border: ChatGPT forces its own border off with a rule we can't out-rank.) */
 html.gm-on [data-composer-layout][role=presentation]{background:var(--im-bg)!important;outline:1px solid var(--im-line)!important;
   outline-offset:-1px;border-radius:20px!important;box-shadow:none!important}
+/* Smaller round buttons, so the bar is slim. */
+html.gm-on [data-composer-layout] [data-composer-leading-controls] button,
+html.gm-on [data-composer-layout] [data-composer-trailing-controls] button{width:30px!important;height:30px!important;min-width:30px!important}
 /* Send / voice button: Messages-blue circle. */
 html.gm-on [data-composer-layout] button[aria-label="Send"],
 html.gm-on [data-composer-layout] button[aria-label="Send prompt"],
@@ -123,6 +147,26 @@ html.gm-on [data-composer-layout] button[aria-label="Dictate"]{color:var(--im-su
   // ChatGPT sometimes rewrites the classes on <html> (e.g. when switching light/dark),
   // which would remove "gm-on" — put it back whenever that happens.
   new MutationObserver(applyClass).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+
+  // Hides ChatGPT's small grey notes that have no place in a Messages thread.
+  // They have no stable markers, so we find them by their wording.
+  const NOTES = /^(For safety, we may keep a copy|ChatGPT can make mistakes|This chat won.t appear in your history)/i;
+  let noteTimer = null;
+  function hideNotes() {
+    noteTimer = null;
+    if (!document.body) return;
+    for (const el of document.body.querySelectorAll('p, div, span')) {
+      // Only small leaf-ish elements (so we never hide a whole section by accident).
+      if (el.childElementCount > 3 || el.hasAttribute('data-gm-hide')) continue;
+      const t = el.textContent.trim();
+      if (t.length < 200 && NOTES.test(t) && !el.closest('[data-conversation-role], [data-user-message-bubble], #gm-list')) {
+        el.setAttribute('data-gm-hide', '');
+      }
+    }
+  }
+  // Check again (at most every 300 ms) whenever ChatGPT changes the page.
+  new MutationObserver(() => { if (!noteTimer) noteTimer = setTimeout(hideNotes, 300); })
+    .observe(document.documentElement, { childList: true, subtree: true });
 
   // ---------- 2) The chat list ----------
   let list = null;          // the #gm-list element (built the first time it is opened)
