@@ -1262,8 +1262,11 @@ func messagesIcon(size: CGFloat, monochrome: Bool = false) -> NSImage {
         if monochrome {
             // Menu bar: a slightly rounder bubble and
             // a modest curved tail at the bottom-left, so the speech-bubble shape reads at a glance.
-            let w = r.width, h = r.height
-            bubble = NSRect(x: r.minX + w * 0.21, y: r.minY + h * 0.32, width: w * 0.60, height: h * 0.46)
+            // k = bubble scale (0.92 = a touch smaller); the bubble stays centred on the same spot.
+            let k: CGFloat = 0.92
+            let w = r.width * k, h = r.height * k
+            bubble = NSRect(x: r.minX + r.width * 0.51 - w * 0.30, y: r.minY + r.height * 0.55 - h * 0.23,
+                            width: w * 0.60, height: h * 0.46)
             tail.move(to: NSPoint(x: bubble.minX + w * 0.08, y: bubble.minY + h * 0.10))      // starts inside the oval
             tail.curve(to: NSPoint(x: bubble.minX + w * 0.01, y: bubble.minY - h * 0.08),      // the tip, down-left
                        controlPoint1: NSPoint(x: bubble.minX + w * 0.08, y: bubble.minY + h * 0.01),
